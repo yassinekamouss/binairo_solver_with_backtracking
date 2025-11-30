@@ -13,6 +13,7 @@ public abstract class CSPSolver {
     public long nodeCount = 0;          // Nombre de nœuds explorés
     public long startTime = 0;
     public double executionTime = 0;    // En secondes
+    
     // Limite facultative de temps pour interrompre la recherche
     public Long timeLimitMs = null;
 
@@ -27,7 +28,6 @@ public abstract class CSPSolver {
         Position result = backtracking(startPos);
         
         this.executionTime = (System.currentTimeMillis() - this.startTime) / 1000.0;
-        System.out.println(this.executionTime);
         return result;
     }
 
@@ -166,7 +166,7 @@ public abstract class CSPSolver {
      * Implémente LCV (Least Constraining Value).
      */
     protected List<Integer> orderDomainValues(Position p, Move var) {
-        // Récupérer les valeurs possibles depuis la Position (gérée par ST/SET dans BinairoPosition)
+        // Récupérer les valeurs possibles depuis la Position
         // Pour Binairo simple c'est souvent juste {0, 1}
         List<Integer> values = getDomainValues(p, var);
 

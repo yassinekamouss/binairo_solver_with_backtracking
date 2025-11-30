@@ -64,7 +64,7 @@ public class BinairoGame extends CSPSolver {
     }
 
     // =========================================================================
-    // II. HEURISTIQUES AVANCÉES (IMPLÉMENTATIONS RÉELLES)
+    // II. HEURISTIQUES AVANCÉES 
     // =========================================================================
 
     @Override
@@ -212,20 +212,6 @@ public class BinairoGame extends CSPSolver {
         return true;
     }
 
-    // --- CLASSES UTILITAIRES POUR AC-3 ---
-    
-    private class Coord {
-        int r, c;
-        Coord(int r, int c) { this.r = r; this.c = c; }
-        // Pour comparaison
-        public boolean equals(Coord o) { return this.r == o.r && this.c == o.c; }
-    }
-
-    private class Arc {
-        Coord xi, xj;
-        Arc(Coord xi, Coord xj) { this.xi = xi; this.xj = xj; }
-    }
-
     // Ajoute tous les arcs (Xi, Xk) où Xk est un voisin de Xi
     private void addArcsForVariable(BinairoPosition pos, int r, int c, Queue<Arc> queue) {
         Coord xi = new Coord(r, c);
@@ -312,7 +298,6 @@ public class BinairoGame extends CSPSolver {
         pos.board[xj.r][xj.c] = oldXj;
         return valid;
     }
-
 
     // Fonction REVISE simple pour Forward Checking (sans file)
     private boolean revise(BinairoPosition pos, int r, int c) {
