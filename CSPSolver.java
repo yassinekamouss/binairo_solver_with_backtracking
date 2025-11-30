@@ -13,6 +13,8 @@ public abstract class CSPSolver {
     public long nodeCount = 0;          // Nombre de nœuds explorés
     public long startTime = 0;
     public double executionTime = 0;    // En secondes
+    // Limite facultative de temps pour interrompre la recherche
+    public Long timeLimitMs = null;
 
     /**
      * Point d'entrée principal pour lancer la résolution
@@ -34,6 +36,12 @@ public abstract class CSPSolver {
      */
     protected Position backtracking(Position p) {
         nodeCount++;
+
+        // Interruption douce si limite de temps dépassée
+        if (timeLimitMs != null) {
+            long elapsed = System.currentTimeMillis() - this.startTime;
+            if (elapsed > timeLimitMs) return null;
+        }
 
         // 1. TEST D'ARRÊT : Si la grille est complète et valide
         if (isComplete(p)) {

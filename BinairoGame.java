@@ -53,12 +53,12 @@ public class BinairoGame extends CSPSolver {
         
         // Application du coup
         copy.board[m.row][m.col] = m.value;
+        // Mise à jour des compteurs
+        if (m.value == 0) { copy.rowZeroCount[m.row]++; copy.colZeroCount[m.col]++; }
+        else { copy.rowOneCount[m.row]++; copy.colOneCount[m.col]++; }
         
         // Mise à jour du domaine : la variable assignée n'a plus qu'une seule valeur possible
-        String key = copy.getKey(m.row, m.col);
-        SET<Integer> singleVal = new SET<>();
-        singleVal.add(m.value);
-        copy.domains.put(key, singleVal);
+        copy.setDomainSingle(m.row, m.col, m.value);
 
         return copy;
     }
@@ -71,8 +71,7 @@ public class BinairoGame extends CSPSolver {
     public int getDomainSize(Position p, Move var) {
         BinairoPosition pos = (BinairoPosition) p;
         BinairoMove m = (BinairoMove) var;
-        SET<Integer> dom = pos.domains.get(pos.getKey(m.row, m.col));
-        return (dom == null) ? 0 : dom.size();
+        return pos.getDomainSize(m.row, m.col);
     }
 
     @Override
@@ -93,11 +92,9 @@ public class BinairoGame extends CSPSolver {
     public List<Integer> getDomainValues(Position p, Move var) {
         BinairoPosition pos = (BinairoPosition) p;
         BinairoMove m = (BinairoMove) var;
-        SET<Integer> set = pos.domains.get(pos.getKey(m.row, m.col));
         List<Integer> list = new ArrayList<>();
-        if (set != null) {
-            for (Integer val : set) list.add(val);
-        }
+        if (pos.domainAllows(m.row, m.col, BinairoPosition.ZERO)) list.add(0);
+        if (pos.domainAllows(m.row, m.col, BinairoPosition.ONE)) list.add(1);
         return list;
     }
 
@@ -123,13 +120,13 @@ public class BinairoGame extends CSPSolver {
             if (c == m.col || pos.board[m.row][c] != BinairoPosition.EMPTY) continue;
             
             // Pour ce voisin, combien de ses valeurs possibles deviennent invalides ?
-            SET<Integer> neighborDomain = pos.domains.get(pos.getKey(m.row, c));
-            for (int nVal : neighborDomain) {
+            if (pos.domainAllows(m.row, c, 0)) {
                 // Si le voisin prenait nVal, est-ce que ce serait compatible avec notre val ?
                 // On utilise checkMoveRules sur le voisin
-                if (!checkMoveRules(pos, m.row, c, nVal)) {
-                    constraintsCost++;
-                }
+                if (!checkMoveRules(pos, m.row, c, 0)) constraintsCost++;
+            }
+            if (pos.domainAllows(m.row, c, 1)) {
+                if (!checkMoveRules(pos, m.row, c, 1)) constraintsCost++;
             }
         }
 
@@ -137,11 +134,11 @@ public class BinairoGame extends CSPSolver {
         for (int r = 0; r < pos.n; r++) {
             if (r == m.row || pos.board[r][m.col] != BinairoPosition.EMPTY) continue;
             
-            SET<Integer> neighborDomain = pos.domains.get(pos.getKey(r, m.col));
-            for (int nVal : neighborDomain) {
-                if (!checkMoveRules(pos, r, m.col, nVal)) {
-                    constraintsCost++;
-                }
+            if (pos.domainAllows(r, m.col, 0)) {
+                if (!checkMoveRules(pos, r, m.col, 0)) constraintsCost++;
+            }
+            if (pos.domainAllows(r, m.col, 1)) {
+                if (!checkMoveRules(pos, r, m.col, 1)) constraintsCost++;
             }
         }
 
@@ -203,7 +200,7 @@ public class BinairoGame extends CSPSolver {
             if (reviseArc(pos, arc.xi, arc.xj)) {
                 
                 // Vérifier si le domaine est devenu vide (Échec)
-                if (pos.domains.get(pos.getKey(arc.xi.r, arc.xi.c)).size() == 0) {
+                if (pos.getDomainSize(arc.xi.r, arc.xi.c) == 0) {
                     return false;
                 }
                 
@@ -268,18 +265,15 @@ public class BinairoGame extends CSPSolver {
     // Vérifie si pour tout x dans D(xi), il existe un y dans D(xj) qui satisfait les contraintes
     private boolean reviseArc(BinairoPosition pos, Coord xi, Coord xj) {
         boolean revised = false;
-        String keyXi = pos.getKey(xi.r, xi.c);
-        String keyXj = pos.getKey(xj.r, xj.c);
-        
-        SET<Integer> domainXi = pos.domains.get(keyXi);
-        SET<Integer> domainXj = pos.domains.get(keyXj);
         List<Integer> toRemove = new ArrayList<>();
 
-        for (int x : domainXi) {
+        for (int x = 0; x <= 1; x++) {
+            if (!pos.domainAllows(xi.r, xi.c, x)) continue;
             boolean supported = false;
             
             // On cherche un support y dans le domaine de Xj
-            for (int y : domainXj) {
+            for (int y = 0; y <= 1; y++) {
+                if (!pos.domainAllows(xj.r, xj.c, y)) continue;
                 if (isConsistentPair(pos, xi, x, xj, y)) {
                     supported = true;
                     break;
@@ -292,44 +286,50 @@ public class BinairoGame extends CSPSolver {
             }
         }
 
-        for (int val : toRemove) domainXi.remove(val);
+        for (int val : toRemove) {
+            // retirer val du masque
+            short m = pos.domainMask[xi.r][xi.c];
+            if (val == 0) m = (short)(m & ~0b01); else m = (short)(m & ~0b10);
+            pos.domainMask[xi.r][xi.c] = m;
+        }
         return revised;
     }
 
     // Vérifie si l'affectation (Xi=valX, Xj=valY) est légale
     private boolean isConsistentPair(BinairoPosition pos, Coord xi, int valX, Coord xj, int valY) {
-        // On pose virtuellement les deux valeurs
+        // Pose virtuelle SANS modifier les compteurs (checkMoveRules ajoute +1 logique)
         int oldXi = pos.board[xi.r][xi.c];
         int oldXj = pos.board[xj.r][xj.c];
-        
+
         pos.board[xi.r][xi.c] = valX;
         pos.board[xj.r][xj.c] = valY;
-        
-        // On vérifie si cela viole les règles pour Xi ou Xj
-        boolean valid = checkMoveRules(pos, xi.r, xi.c, valX) && 
+
+        boolean valid = checkMoveRules(pos, xi.r, xi.c, valX) &&
                         checkMoveRules(pos, xj.r, xj.c, valY);
-        
-        // Backtrack local
+
+        // revert
         pos.board[xi.r][xi.c] = oldXi;
         pos.board[xj.r][xj.c] = oldXj;
-        
         return valid;
     }
 
 
     // Fonction REVISE simple pour Forward Checking (sans file)
     private boolean revise(BinairoPosition pos, int r, int c) {
-        String key = pos.getKey(r, c);
-        SET<Integer> domain = pos.domains.get(key);
         List<Integer> toRemove = new ArrayList<>();
 
-        for (int val : domain) {
+        for (int val = 0; val <= 1; val++) {
+            if (!pos.domainAllows(r, c, val)) continue;
             if (!checkMoveRules(pos, r, c, val)) {
                 toRemove.add(val);
             }
         }
-        for (int val : toRemove) domain.remove(val);
-        return domain.size() > 0;
+        for (int val : toRemove) {
+            short m = pos.domainMask[r][c];
+            if (val == 0) m = (short)(m & ~0b01); else m = (short)(m & ~0b10);
+            pos.domainMask[r][c] = m;
+        }
+        return pos.getDomainSize(r, c) > 0;
     }
 
     // =========================================================================
@@ -351,13 +351,13 @@ public class BinairoGame extends CSPSolver {
         if (r > 0 && r < n-1 && b[r-1][c] == val && b[r+1][c] == val) return false;
 
         // 2. Règle de Parité (Max N/2 occurrences)
-        int countRow = 0;
-        for (int j = 0; j < n; j++) if (b[r][j] == val) countRow++;
-        if (countRow > n / 2) return false; // Strictement supérieur car on vient de poser le pion
-
-        int countCol = 0;
-        for (int i = 0; i < n; i++) if (b[i][c] == val) countCol++;
-        if (countCol > n / 2) return false;
+        if (val == 0) {
+            if (pos.rowZeroCount[r] + 1 > n / 2) return false;
+            if (pos.colZeroCount[c] + 1 > n / 2) return false;
+        } else {
+            if (pos.rowOneCount[r] + 1 > n / 2) return false;
+            if (pos.colOneCount[c] + 1 > n / 2) return false;
+        }
 
         return true;
     }
@@ -460,16 +460,11 @@ public class BinairoGame extends CSPSolver {
         // Un carré au milieu
         p.board[10][11] = 1; p.board[11][10] = 1;
 
-        // Initialisation correcte des domaines pour cette grille
-        // (Important pour que AC-3 ne démarre pas avec des domaines vides)
+        // Mettre à jour compteurs et domaines pour les cases fixées
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
-                if (p.board[i][j] != BinairoPosition.EMPTY) {
-                    // Si la case est remplie, son domaine est restreint à sa valeur
-                    SET<Integer> d = new SET<>();
-                    d.add(p.board[i][j]);
-                    p.domains.put(p.getKey(i, j), d);
-                }
+                if (p.board[i][j] == 0) { p.rowZeroCount[i]++; p.colZeroCount[j]++; p.setDomainSingle(i,j,0); }
+                else if (p.board[i][j] == 1) { p.rowOneCount[i]++; p.colOneCount[j]++; p.setDomainSingle(i,j,1); }
             }
         }
 
@@ -511,27 +506,31 @@ public class BinairoGame extends CSPSolver {
             return null;
         }
 
-        System.out.println("Génération instantanée en cours...");
+        System.out.println("Génération en cours (avec MRV+Degree+FC+AC3, restart si lent)...");
 
         // 1. On part d'une grille TOTALEMENT vide
         // Plus de diagonale aléatoire qui bloque le solveur !
         BinairoPosition empty = new BinairoPosition(n);
 
-        // 2. Configuration pour vitesse maximale
-        // MRV : Choisit les cases les plus contraintes (critique)
-        // FC  : Nettoie les domaines (critique)
-        // LCV : FALSE -> Important pour que notre Collections.shuffle fonctionne (voir orderDomainValues)
+        // 2. Configuration pour pruning fort pendant la génération
         this.useMRV = true;
+        this.useDegree = true;
         this.useFC = true;
-        this.useLCV = false;
-        this.useAC3 = false;
+        this.useLCV = false; // garder l'aléatoire via shuffle
+        this.useAC3 = false; // AC-3 coûteux à l'init sur grandes tailles
 
-        // 3. Résolution
-        // Grâce à orderDomainValues surchargé, cela produira une grille différente à chaque appel
-        Position fullSol = solve(empty);
+        // 3. Résolution avec limite de temps et redémarrage si nécessaire
+        Position fullSol = null;
+        int attempts = 0;
+        while (attempts < 10 && fullSol == null) {
+            attempts++;
+            this.timeLimitMs = 5000L; // 5s par tentative pour éviter les branches pathologiques
+            fullSol = solve(new BinairoPosition(empty));
+        }
+        this.timeLimitMs = null; // désactiver la limite pour les autres opérations
 
         if (fullSol == null) {
-            System.out.println("Erreur improbable : Impossible de remplir une grille vide.");
+            System.out.println("Échec de génération après plusieurs tentatives. Réessayez.");
             return new BinairoPosition(n);
         }
 
@@ -549,14 +548,12 @@ public class BinairoGame extends CSPSolver {
 
             // Si la case n'est pas déjà vide, on la vide
             if (puzzle.board[r][c] != BinairoPosition.EMPTY) {
+                // décrémenter compteurs
+                if (puzzle.board[r][c] == 0) { puzzle.rowZeroCount[r]--; puzzle.colZeroCount[c]--; }
+                else if (puzzle.board[r][c] == 1) { puzzle.rowOneCount[r]--; puzzle.colOneCount[c]--; }
+
                 puzzle.board[r][c] = BinairoPosition.EMPTY;
-
-                // IMPORTANT : Réinitialiser le domaine à {0, 1}
-                SET<Integer> d = new SET<>();
-                d.add(0);
-                d.add(1);
-                puzzle.domains.put(puzzle.getKey(r, c), d);
-
+                puzzle.resetDomainBoth(r, c);
                 removedCount++;
             }
         }
@@ -624,7 +621,14 @@ public class BinairoGame extends CSPSolver {
             try {
                 String[] p = s.split(" ");
                 int r=Integer.parseInt(p[0]), c=Integer.parseInt(p[1]), v=Integer.parseInt(p[2]);
-                if(checkMoveRules(cur,r,c,v)) cur.board[r][c]=v;
+                if(checkMoveRules(cur,r,c,v)) {
+                    // mettre à jour compteurs
+                    if (cur.board[r][c] == 0) { cur.rowZeroCount[r]--; cur.colZeroCount[c]--; }
+                    else if (cur.board[r][c] == 1) { cur.rowOneCount[r]--; cur.colOneCount[c]--; }
+                    cur.board[r][c]=v;
+                    if (v==0) { cur.rowZeroCount[r]++; cur.colZeroCount[c]++; }
+                    else { cur.rowOneCount[r]++; cur.colOneCount[c]++; }
+                }
                 else System.out.println("Invalide!");
             } catch(Exception e) { System.out.println("Erreur format."); }
         }
