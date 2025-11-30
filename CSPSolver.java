@@ -102,48 +102,65 @@ public abstract class CSPSolver {
      */
     protected Move selectVariable(Position p) {
         List<Move> vars = getUnassignedVariables(p);
-        
+
         if (vars.isEmpty()) return null;
 
-        // Si aucune heuristique de sélection n'est active, on prend la première (défaut)
+        // Si aucune heuristique, retourner la première variable
         if (!useMRV && !useDegree) {
             return vars.get(0);
         }
 
-        Move bestVar = vars.get(0);
+        Move bestVar = null;
         int minDomainSize = Integer.MAX_VALUE;
         int maxDegree = -1;
 
         for (Move var : vars) {
-            int currentDomainSize = getDomainSize(p, var);
-            int currentDegree = useDegree ? getDegree(p, var) : 0;
+            int currentDomainSize = useMRV ? getDomainSize(p, var) : 0;
+            int currentDegree = 0;
 
-            if (useMRV) {
-                // Stratégie MRV : On cherche le plus petit domaine
+            boolean shouldUpdate = false;
+
+            if (useMRV && useDegree) {
+                // CAS 1 : MRV + Degree (tie-breaker)
                 if (currentDomainSize < minDomainSize) {
+                    // Nouveau minimum MRV trouvé
                     minDomainSize = currentDomainSize;
+                    currentDegree = getDegree(p, var);
                     maxDegree = currentDegree;
-                    bestVar = var;
-                } 
-                // Stratégie Degree (Tie-breaker) : En cas d'égalité MRV, on prend le plus grand degré
-                else if (useDegree && currentDomainSize == minDomainSize) {
+                    shouldUpdate = true;
+                }
+                else if (currentDomainSize == minDomainSize) {
+                    // Égalité MRV : utiliser Degree comme tie-breaker
+                    currentDegree = getDegree(p, var);
                     if (currentDegree > maxDegree) {
                         maxDegree = currentDegree;
-                        bestVar = var;
+                        shouldUpdate = true;
                     }
                 }
-            } 
-            else if (useDegree) {
-                // Stratégie Degree seule
-                if (currentDegree > maxDegree) {
-                    maxDegree = currentDegree;
-                    bestVar = var;
+            }
+            else if (useMRV) {
+                // CAS 2 : MRV seul
+                if (currentDomainSize < minDomainSize) {
+                    minDomainSize = currentDomainSize;
+                    shouldUpdate = true;
                 }
             }
+            else if (useDegree) {
+                // CAS 3 : Degree seul
+                currentDegree = getDegree(p, var);
+                if (currentDegree > maxDegree) {
+                    maxDegree = currentDegree;
+                    shouldUpdate = true;
+                }
+            }
+
+            if (shouldUpdate) {
+                bestVar = var;
+            }
         }
+
         return bestVar;
     }
-
     /**
      * Ordonne les valeurs du domaine.
      * Implémente LCV (Least Constraining Value).
