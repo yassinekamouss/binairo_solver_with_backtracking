@@ -398,7 +398,6 @@ public class BinairoGame extends CSPSolver {
             switch (choice) {
                 case 1:
                     currentPos = game.generateGridUI();
-//                    currentPos = getGrid20x20(); // Pour test rapide
                     break;
                 case 2:
                     if (currentPos != null) game.playManual(currentPos);
@@ -422,39 +421,6 @@ public class BinairoGame extends CSPSolver {
         }
     }
 
-
-    /**
-     *
-     * @fonction de test
-     */
-    public static BinairoPosition getGrid20x20() {
-        int n = 14;
-        BinairoPosition p = new BinairoPosition(n);
-
-        // On remplit les diagonales pour briser les symétries et forcer des contraintes
-        // Cela rend la grille valide mais difficile.
-        for (int i = 0; i < n; i++) {
-            p.board[i][i] = (i % 2); // Diagonale 1: 0, 1, 0, 1...
-            p.board[i][n - 1 - i] = ((i + 1) % 2); // Diagonale 2: 1, 0, 1, 0...
-        }
-
-        // On ajoute quelques "pièges" (clusters) pour tester le Forward Checking
-        // Un carré de valeurs en haut à gauche
-        p.board[0][1] = 0; p.board[1][0] = 0;
-
-        // Un carré au milieu
-        p.board[10][11] = 1; p.board[11][10] = 1;
-
-        // Mettre à jour compteurs et domaines pour les cases fixées
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                if (p.board[i][j] == 0) { p.rowZeroCount[i]++; p.colZeroCount[j]++; p.setDomainSingle(i,j,0); }
-                else if (p.board[i][j] == 1) { p.rowOneCount[i]++; p.colOneCount[j]++; p.setDomainSingle(i,j,1); }
-            }
-        }
-
-        return p;
-    }
     /**
      * OPTIMISATION CRITIQUE : Surcharge de la méthode de sélection de valeur.
      * En mélangeant l'ordre des valeurs (0, 1) ou (1, 0), on introduit de l'aléatoire
